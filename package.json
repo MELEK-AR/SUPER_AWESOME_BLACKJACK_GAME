@@ -1,0 +1,12 @@
+{
+  "name": "re21-blackjack-server",
+  "version": "1.0.0",
+  "description": "Simple WebSocket Blackjack (21) server for Android game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
