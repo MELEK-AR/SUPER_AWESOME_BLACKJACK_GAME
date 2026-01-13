@@ -19,36 +19,28 @@ function createDeck() {
   const ranks = ["1","2","3","4","5","6","7","8","9","10","11"];
   const deck = [];
 
-  for (const rank of ranks) {
-    for (let i = 0; i < 4; i++) {
-      deck.push({ rank });
-    }
+  for (let i = 0; i < 4; i++) {
+    deck.push(...ranks);
   }
-
   shuffle(deck);
   return deck;
 }
 
-function cardValue(rank) {
-  return Number(rank);
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
 }
 
 function handValue(hand) {
-  let total = 0;
-
-  for (const c of hand) {
-    total += cardValue(c.rank);
-  }
-
-  return total;
+  return hand.reduce((sum, card) => sum + Number(card), 0);
 }
 
 function broadcast(room, payload) {
   const msg = JSON.stringify(payload);
   room.players.forEach(p => {
-    if (p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(msg);
-    }
+    if (p.ws.readyState === WebSocket.OPEN) p.ws.send(msg);
   });
 }
 
@@ -60,7 +52,6 @@ function handleCreateRoom(player, msg) {
   if (player.roomId !== null) return;
 
   const roomId = nextRoomId++;
-
   const room = {
     id: roomId,
     players: [player],
@@ -69,7 +60,6 @@ function handleCreateRoom(player, msg) {
     hands: {},
     stood: {},
     currentTurnIndex: 0,
-
     health: {},
     round: 1,
     rematchVotes: new Set()
@@ -90,7 +80,6 @@ function handleJoinRoom(player, msg) {
   player.name = msg.name || `Player ${player.id}`;
   room.players.push(player);
 
-  // INIT GAME
   room.state = "running";
   room.deck = createDeck();
   room.hands = {};
@@ -281,4 +270,3 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
-
