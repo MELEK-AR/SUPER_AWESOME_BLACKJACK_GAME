@@ -99,35 +99,37 @@ function handleJoinRoom(player, msg) {
   room.players.push(player);
 
   // Initialize game
-  room.state = "running";
-  room.deck = createDeck();
-  room.hands = {};
-  room.stood = {};
-  room.currentTurnIndex = 0;
-  room.round = 1;
-  room.rematchVotes.clear();
+  if (room.players.length === 2) {
+    room.state = "running";
+    room.deck = createDeck();
+    room.hands = {};
+    room.stood = {};
+    room.currentTurnIndex = 0;
+    room.round = 1;
+    room.rematchVotes.clear();
 
-  room.players.forEach(p => {
-    room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
-    room.stood[p.id] = false;
-    room.health[p.id] = 7;
-  });
+    room.players.forEach(p => {
+      room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
+      room.stood[p.id] = false;
+      room.health[p.id] = 7;
+    });
 
-  room.players.forEach(p => {
-    const opp = getOpponent(room, p);
-    p.ws.send(JSON.stringify({
-      type: "game_start",
-      you: { id: p.id, name: p.name },
-      opponent: { id: opp.id, name: opp.name },
-      yourHand: room.hands[p.id],
-      yourValue: handValue(room.hands[p.id]),
-      opponentCardCount: room.hands[opp.id].length,
-      health: { you: room.health[p.id], opponent: room.health[opp.id] },
-      round: room.round,
-      damage: 1,
-      currentTurnPlayerId: room.players[0].id
-    }));
-  }));
+    room.players.forEach(p => {
+      const opp = getOpponent(room, p);
+      p.ws.send(JSON.stringify({
+        type: "game_start",
+        you: { id: p.id, name: p.name },
+        opponent: { id: opp.id, name: opp.name },
+        yourHand: room.hands[p.id],
+        yourValue: handValue(room.hands[p.id]),
+        opponentCardCount: room.hands[opp.id].length,
+        health: { you: room.health[p.id], opponent: room.health[opp.id] },
+        round: room.round,
+        damage: 1,
+        currentTurnPlayerId: room.players[0].id
+      }));
+    });
+  }
 }
 
 /* ===================== GAME ACTIONS ===================== */
