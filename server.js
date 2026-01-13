@@ -18,11 +18,8 @@ const rooms = new Map();
 /* ===================== DECK ===================== */
 
 function createDeck() {
-  const ranks = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-  const deck = [];
-  for (const rank of ranks) {
-    for (let i = 0; i < 4; i++) deck.push({ rank });
-  }
+  // Deck of cards numbered 1 to 11
+  const deck = ["1","2","3","4","5","6","7","8","9","10","11"];
   shuffle(deck);
   return deck;
 }
@@ -34,20 +31,13 @@ function shuffle(array) {
   }
 }
 
-function cardValue(rank) {
-  if (rank === "A") return 11;
-  if (["K","Q","J"].includes(rank)) return 10;
-  return parseInt(rank, 10);
-}
-
 function handValue(hand) {
-  let sum = hand.reduce((acc, c) => acc + cardValue(c.rank), 0);
-  // Adjust for Aces
-  let aceCount = hand.filter(c => c.rank === "A").length;
-  while (sum > 21 && aceCount > 0) {
-    sum -= 10;
-    aceCount--;
+  let sum = hand.reduce((acc, c) => acc + parseInt(c), 0);
+
+  if (sum > 21) {
+    return 0;
   }
+
   return sum;
 }
 
@@ -303,3 +293,4 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
