@@ -19,15 +19,13 @@ let nextRoomId = 1;
 // rooms: Map<roomId, room>
 const rooms = new Map();
 
+/**
+ * SINGLE-SUIT / UNIQUE CARD DECK
+ * One of each rank only (13 cards total)
+ */
 function createDeck() {
-  const suits = ["Hearts", "Diamonds", "Clubs", "Spades"];
   const ranks = ["2","3","4","5","6","7","8","9","10","Jack","Queen","King","Ace"];
-  const deck = [];
-  for (const s of suits) {
-    for (const r of ranks) {
-      deck.push({ suit: s, rank: r });
-    }
-  }
+  const deck = ranks.map(r => ({ suit: "Unique", rank: r }));
   shuffle(deck);
   return deck;
 }
@@ -103,7 +101,7 @@ function handleCreateRoom(player, msg) {
     stood: {},
     currentTurnIndex: 0,
     state: "waiting",
-    mode: "chainsaw"
+    mode: "single-deck"
   };
 
   player.roomId = roomId;
@@ -120,7 +118,7 @@ function handleCreateRoom(player, msg) {
 
 function handleJoinRoom(player, msg) {
   const room = rooms.get(msg.roomId);
-  if (!room || room.state !== "waiting") {
+  if (!room || room.state !== "waiting" || room.players.length >= 2) {
     player.ws.send(JSON.stringify({
       type: "error",
       message: "Room not joinable"
@@ -132,7 +130,6 @@ function handleJoinRoom(player, msg) {
   player.name = msg.name || `Player ${player.id}`;
   room.players.push(player);
 
-  // Initialize game
   room.state = "running";
   room.deck = createDeck();
 
@@ -164,6 +161,7 @@ function handleHit(player) {
   if (!room || room.state !== "running") return;
 
   if (room.players[room.currentTurnIndex].id !== player.id) return;
+  if (room.deck.length === 0) return;
 
   const card = room.deck.pop();
   room.hands[player.id].push(card);
@@ -176,12 +174,22 @@ function handleHit(player) {
     newValue: value
   });
 
-  if (value > 21) endRound(room, "bust", player.id);
+  if (value > 21) {
+    endRound(room, "bust", player.id);
+  } else {
+    room.currentTurnIndex = 1 - room.currentTurnIndex;
+    broadcast(room, {
+      type: "turn_change",
+      currentTurnPlayerId: room.players[room.currentTurnIndex].id
+    });
+  }
 }
 
 function handleStand(player) {
   const room = rooms.get(player.roomId);
   if (!room || room.state !== "running") return;
+
+  if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   room.stood[player.id] = true;
   broadcast(room, { type: "stand_result", playerId: player.id });
@@ -222,8 +230,12 @@ wss.on("connection", (ws) => {
   const player = { id: nextPlayerId++, ws, roomId: null, name: null };
 
   ws.on("message", (data) => {
-    const msg = JSON.parse(data.toString());
-    handleMessage(player, msg);
+    try {
+      const msg = JSON.parse(data.toString());
+      handleMessage(player, msg);
+    } catch {
+      ws.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
+    }
   });
 
   ws.on("close", () => handleDisconnect(player));
@@ -257,7 +269,6 @@ function handleDisconnect(player) {
     }
   }
   broadcastRoomList();
-
 }
 
 server.listen(PORT, () => {
