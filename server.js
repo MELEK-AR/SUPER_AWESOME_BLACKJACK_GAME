@@ -55,7 +55,6 @@ function getOpponent(room, player) {
 }
 
 /* ===================== ROOM HANDLERS ===================== */
-
 function handleCreateRoom(player, msg) {
   if (player.roomId !== null) return;
 
@@ -78,6 +77,24 @@ function handleCreateRoom(player, msg) {
   rooms.set(roomId, room);
 
   player.ws.send(JSON.stringify({ type: "room_created", roomId }));
+}
+
+function handleGetRooms(player) {
+  const availableRooms = [];
+
+  for (const [id, room] of rooms.entries()) {
+    availableRooms.push({ 
+      id: id, 
+      playerCount: room.players.length, 
+      state: room.state,
+      maxPlayers: 2
+    });
+  }
+
+  player.ws.send(JSON.stringify({ 
+    type: "room_list", 
+    rooms: availableRooms 
+  }));
 }
 
 function handleJoinRoom(player, msg) {
@@ -284,6 +301,7 @@ function handleMessage(player, msg) {
   switch (msg.type) {
     case "create_room": handleCreateRoom(player, msg); break;
     case "join_room": handleJoinRoom(player, msg); break;
+    case "get_rooms": handleGetRooms(player); break;
     case "hit": handleHit(player); break;
     case "stand": handleStand(player); break;
     case "rematch": handleRematch(player); break;
@@ -293,4 +311,5 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
 
