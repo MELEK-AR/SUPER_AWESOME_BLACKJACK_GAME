@@ -18,8 +18,8 @@ const rooms = new Map();
 /* ===================== DECK ===================== */
 
 function createDeck() {
-  const ranks = ["2","3","4","5","6","7","8","9","10","Jack","Queen","King","Ace"];
-  const deck = ranks.map(r => ({ suit: "Unique", rank: r }));
+  const ranks = Array.from({ length: 11 }, (_, i) => (i + 1).toString()); // "1" to "11"
+  const deck = ranks.map(r => ({ rank: r })); // no suit needed
   shuffle(deck);
   return deck;
 }
@@ -32,27 +32,13 @@ function shuffle(array) {
 }
 
 function cardValue(rank) {
-  if (rank === "Ace") return 11;
-  if (["King","Queen","Jack","10"].includes(rank)) return 10;
   return parseInt(rank, 10);
 }
 
 function handValue(hand) {
-  let total = 0;
-  let aces = 0;
-
-  for (const c of hand) {
-    total += cardValue(c.rank);
-    if (c.rank === "Ace") aces++;
-  }
-
-  while (total > 21 && aces > 0) {
-    total -= 10;
-    aces--;
-  }
-
-  return total;
+  return hand.reduce((sum, c) => sum + cardValue(c.rank), 0);
 }
+
 
 /* ===================== HELPERS ===================== */
 
