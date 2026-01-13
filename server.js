@@ -82,9 +82,9 @@ function handleCreateRoom(player, msg) {
 function handleGetRooms(player) {
   const availableRooms = [];
 
-  for (const [id, room] of rooms.entries()) {
+  for (const [roomId, room] of rooms.entries()) {
     availableRooms.push({ 
-      id: id, 
+      id: roomId, 
       playerCount: room.players.length, 
       state: room.state,
       maxPlayers: 2
@@ -311,5 +311,6 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
 
 
