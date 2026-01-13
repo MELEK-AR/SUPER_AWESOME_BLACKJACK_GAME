@@ -11,21 +11,13 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-console.log("Blackjack (21) WebSocket Server running on port", PORT);
-
 let nextPlayerId = 1;
 let nextRoomId = 1;
-
-// rooms: Map<roomId, room>
 const rooms = new Map();
 
-/**
- * SINGLE-SUIT / UNIQUE CARD DECK
- * One of each rank only (13 cards total)
- */
 function createDeck() {
-  const ranks = ["2","3","4","5","6","7","8","9","10","Jack","Queen","King","Ace"];
-  const deck = ranks.map(r => ({ suit: "Unique", rank: r }));
+  const ranks = ["1","2","3","4","5","6","7","8","9","10","11"];
+  const deck = ranks
   shuffle(deck);
   return deck;
 }
@@ -37,23 +29,20 @@ function shuffle(array) {
   }
 }
 
-function cardValue(rank) {
-  if (rank === "Ace") return 11;
-  if (["King","Queen","Jack","10"].includes(rank)) return 10;
-  return parseInt(rank, 10);
-}
-
 function handValue(hand) {
   let total = 0;
   let aces = 0;
+
   for (const c of hand) {
     total += cardValue(c.rank);
     if (c.rank === "Ace") aces++;
   }
+
   while (total > 21 && aces > 0) {
     total -= 10;
     aces--;
   }
+
   return total;
 }
 
@@ -66,100 +55,79 @@ function broadcast(room, payload) {
   });
 }
 
-function broadcastRoomList() {
-  const roomsPayload = Array.from(rooms.values()).map(r => ({
-    roomId: r.id,
-    players: r.players.map(p => ({ id: p.id, name: p.name })),
-    state: r.state,
-    mode: r.mode
-  }));
-
-  const msg = JSON.stringify({
-    type: "room_list",
-    rooms: roomsPayload
-  });
-
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
-  });
-}
-
 function getOpponent(room, player) {
   return room.players.find(p => p.id !== player.id);
 }
 
 function handleCreateRoom(player, msg) {
-  if (player.roomId != null) return;
+  if (player.roomId !== null) return;
 
   const roomId = nextRoomId++;
 
   const room = {
     id: roomId,
     players: [player],
+    state: "waiting",
     deck: null,
     hands: {},
     stood: {},
     currentTurnIndex: 0,
-    state: "waiting",
-    mode: "single-deck"
+
+    health: {},
+    round: 1,
+    rematchVotes: new Set()
   };
 
   player.roomId = roomId;
   player.name = msg.name || `Player ${player.id}`;
   rooms.set(roomId, room);
 
-  player.ws.send(JSON.stringify({
-    type: "room_created",
-    roomId
-  }));
-
-  broadcastRoomList();
+  player.ws.send(JSON.stringify({ type: "room_created", roomId }));
 }
 
 function handleJoinRoom(player, msg) {
   const room = rooms.get(msg.roomId);
-  if (!room || room.state !== "waiting" || room.players.length >= 2) {
-    player.ws.send(JSON.stringify({
-      type: "error",
-      message: "Room not joinable"
-    }));
-    return;
-  }
+  if (!room || room.state !== "waiting" || room.players.length >= 2) return;
 
   player.roomId = room.id;
   player.name = msg.name || `Player ${player.id}`;
   room.players.push(player);
 
+  // INIT GAME
   room.state = "running";
   room.deck = createDeck();
+  room.hands = {};
+  room.stood = {};
+  room.currentTurnIndex = 0;
+  room.round = 1;
+  room.rematchVotes.clear();
 
-  for (const p of room.players) {
+  room.players.forEach(p => {
     room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
     room.stood[p.id] = false;
-  }
+    room.health[p.id] = 7;
+  });
 
   room.players.forEach(p => {
     const opp = getOpponent(room, p);
     p.ws.send(JSON.stringify({
       type: "game_start",
-      roomId: room.id,
       you: { id: p.id, name: p.name },
       opponent: { id: opp.id, name: opp.name },
       yourHand: room.hands[p.id],
-      opponentCardCount: room.hands[opp.id].length,
       yourValue: handValue(room.hands[p.id]),
-      currentTurnPlayerId: room.players[0].id,
-      mode: room.mode
+      opponentCardCount: room.hands[opp.id].length,
+      health: room.health,
+      round: room.round,
+      damage: 1,
+      currentTurnPlayerId: room.players[0].id
     }));
   });
-
-  broadcastRoomList();
 }
 
 function handleHit(player) {
   const room = rooms.get(player.roomId);
   if (!room || room.state !== "running") return;
-
   if (room.players[room.currentTurnIndex].id !== player.id) return;
   if (room.deck.length === 0) return;
 
@@ -171,7 +139,7 @@ function handleHit(player) {
     type: "hit_result",
     playerId: player.id,
     card,
-    newValue: value
+    value
   });
 
   if (value > 21) {
@@ -188,11 +156,10 @@ function handleHit(player) {
 function handleStand(player) {
   const room = rooms.get(player.roomId);
   if (!room || room.state !== "running") return;
-
   if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   room.stood[player.id] = true;
-  broadcast(room, { type: "stand_result", playerId: player.id });
+  broadcast(room, { type: "stand", playerId: player.id });
 
   const opp = getOpponent(room, player);
   if (room.stood[opp.id]) {
@@ -214,38 +181,94 @@ function endRound(room, reason, bustedId = null) {
   const v2 = handValue(room.hands[p2.id]);
 
   let winnerId = null;
-  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
-  else winnerId = v1 === v2 ? null : v1 > v2 ? p1.id : p2.id;
+
+  if (bustedId) {
+    winnerId = bustedId === p1.id ? p2.id : p1.id;
+  } else if (v1 !== v2) {
+    winnerId = v1 > v2 ? p1.id : p2.id;
+  }
+
+  const damage = Math.min(room.round, 7);
+
+  if (winnerId) {
+    const loserId = winnerId === p1.id ? p2.id : p1.id;
+    room.health[loserId] -= damage;
+    if (room.health[loserId] < 0) room.health[loserId] = 0;
+  }
 
   broadcast(room, {
     type: "round_end",
     reason,
     winnerId,
     values: { [p1.id]: v1, [p2.id]: v2 },
-    hands: room.hands
+    health: room.health,
+    damage,
+    round: room.round
+  });
+
+  const dead = Object.entries(room.health).find(([_, hp]) => hp <= 0);
+  if (dead) {
+    broadcast(room, {
+      type: "game_over",
+      loserId: Number(dead[0])
+    });
+    rooms.delete(room.id);
+  }
+}
+
+function handleRematch(player) {
+  const room = rooms.get(player.roomId);
+  if (!room || room.state !== "finished") return;
+
+  room.rematchVotes.add(player.id);
+  if (room.rematchVotes.size < 2) return;
+
+  room.round++;
+  room.state = "running";
+  room.rematchVotes.clear();
+  room.deck = createDeck();
+  room.hands = {};
+  room.stood = {};
+  room.currentTurnIndex = 0;
+
+  room.players.forEach(p => {
+    room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
+    room.stood[p.id] = false;
+  });
+
+  broadcast(room, {
+    type: "rematch_start",
+    round: room.round,
+    damage: Math.min(room.round, 7),
+    health: room.health,
+    currentTurnPlayerId: room.players[0].id
   });
 }
 
 wss.on("connection", (ws) => {
   const player = { id: nextPlayerId++, ws, roomId: null, name: null };
 
-  ws.on("message", (data) => {
+  ws.on("message", data => {
     try {
       const msg = JSON.parse(data.toString());
       handleMessage(player, msg);
-    } catch {
-      ws.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
+    } catch {}
+  });
+
+  ws.on("close", () => {
+    if (player.roomId !== null) {
+      const room = rooms.get(player.roomId);
+      if (room) {
+        const opp = room.players.find(p => p.id !== player.id);
+        if (opp?.ws.readyState === WebSocket.OPEN) {
+          opp.ws.send(JSON.stringify({ type: "opponent_left" }));
+        }
+        rooms.delete(room.id);
+      }
     }
   });
 
-  ws.on("close", () => handleDisconnect(player));
-
-  ws.send(JSON.stringify({
-    type: "welcome",
-    playerId: player.id
-  }));
-
-  broadcastRoomList();
+  ws.send(JSON.stringify({ type: "welcome", playerId: player.id }));
 });
 
 function handleMessage(player, msg) {
@@ -254,23 +277,10 @@ function handleMessage(player, msg) {
     case "join_room": handleJoinRoom(player, msg); break;
     case "hit": handleHit(player); break;
     case "stand": handleStand(player); break;
+    case "rematch": handleRematch(player); break;
   }
-}
-
-function handleDisconnect(player) {
-  if (player.roomId != null) {
-    const room = rooms.get(player.roomId);
-    if (room) {
-      const opp = room.players.find(p => p.id !== player.id);
-      if (opp?.ws.readyState === WebSocket.OPEN) {
-        opp.ws.send(JSON.stringify({ type: "opponent_left" }));
-      }
-      rooms.delete(room.id);
-    }
-  }
-  broadcastRoomList();
 }
 
 server.listen(PORT, () => {
-  console.log("Blackjack (21) WebSocket Server running on port", PORT);
+  console.log("Server running on port", PORT);
 });
