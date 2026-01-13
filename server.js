@@ -18,8 +18,11 @@ const rooms = new Map();
 /* ===================== DECK ===================== */
 
 function createDeck() {
-  const ranks = Array.from({ length: 11 }, (_, i) => (i + 1).toString()); // "1" to "11"
-  const deck = ranks.map(r => ({ rank: r })); // no suit needed
+  const ranks = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+  const deck = [];
+  for (const rank of ranks) {
+    for (let i = 0; i < 4; i++) deck.push({ rank });
+  }
   shuffle(deck);
   return deck;
 }
@@ -32,22 +35,28 @@ function shuffle(array) {
 }
 
 function cardValue(rank) {
+  if (rank === "A") return 11;
+  if (["K","Q","J"].includes(rank)) return 10;
   return parseInt(rank, 10);
 }
 
 function handValue(hand) {
-  return hand.reduce((sum, c) => sum + cardValue(c.rank), 0);
+  let sum = hand.reduce((acc, c) => acc + cardValue(c.rank), 0);
+  // Adjust for Aces
+  let aceCount = hand.filter(c => c.rank === "A").length;
+  while (sum > 21 && aceCount > 0) {
+    sum -= 10;
+    aceCount--;
+  }
+  return sum;
 }
-
 
 /* ===================== HELPERS ===================== */
 
 function broadcast(room, payload) {
   const msg = JSON.stringify(payload);
   room.players.forEach(p => {
-    if (p.ws.readyState === WebSocket.OPEN) {
-      p.ws.send(msg);
-    }
+    if (p.ws.readyState === WebSocket.OPEN) p.ws.send(msg);
   });
 }
 
@@ -55,13 +64,12 @@ function getOpponent(room, player) {
   return room.players.find(p => p.id !== player.id);
 }
 
-/* ===================== ROOM ===================== */
+/* ===================== ROOM HANDLERS ===================== */
 
 function handleCreateRoom(player, msg) {
   if (player.roomId !== null) return;
 
   const roomId = nextRoomId++;
-
   const room = {
     id: roomId,
     players: [player],
@@ -70,8 +78,6 @@ function handleCreateRoom(player, msg) {
     hands: {},
     stood: {},
     currentTurnIndex: 0,
-
-    // GAME STATE
     health: {},
     round: 1,
     rematchVotes: new Set()
@@ -92,7 +98,7 @@ function handleJoinRoom(player, msg) {
   player.name = msg.name || `Player ${player.id}`;
   room.players.push(player);
 
-  // INIT GAME
+  // Initialize game
   room.state = "running";
   room.deck = createDeck();
   room.hands = {};
@@ -116,12 +122,12 @@ function handleJoinRoom(player, msg) {
       yourHand: room.hands[p.id],
       yourValue: handValue(room.hands[p.id]),
       opponentCardCount: room.hands[opp.id].length,
-      health: room.health,
+      health: { you: room.health[p.id], opponent: room.health[opp.id] },
       round: room.round,
       damage: 1,
       currentTurnPlayerId: room.players[0].id
     }));
-  });
+  }));
 }
 
 /* ===================== GAME ACTIONS ===================== */
@@ -140,7 +146,7 @@ function handleHit(player) {
     type: "hit_result",
     playerId: player.id,
     card,
-    value
+    newValue: value
   });
 
   if (value > 21) {
@@ -160,7 +166,7 @@ function handleStand(player) {
   if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   room.stood[player.id] = true;
-  broadcast(room, { type: "stand", playerId: player.id });
+  broadcast(room, { type: "stand_result", playerId: player.id });
 
   const opp = getOpponent(room, player);
   if (room.stood[opp.id]) {
@@ -185,11 +191,8 @@ function endRound(room, reason, bustedId = null) {
 
   let winnerId = null;
 
-  if (bustedId) {
-    winnerId = bustedId === p1.id ? p2.id : p1.id;
-  } else if (v1 !== v2) {
-    winnerId = v1 > v2 ? p1.id : p2.id;
-  }
+  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
+  else if (v1 !== v2) winnerId = v1 > v2 ? p1.id : p2.id;
 
   const damage = Math.min(room.round, 7);
 
@@ -199,14 +202,17 @@ function endRound(room, reason, bustedId = null) {
     if (room.health[loserId] < 0) room.health[loserId] = 0;
   }
 
-  broadcast(room, {
-    type: "round_end",
-    reason,
-    winnerId,
-    values: { [p1.id]: v1, [p2.id]: v2 },
-    health: room.health,
-    damage,
-    round: room.round
+  room.players.forEach(p => {
+    const opp = getOpponent(room, p);
+    p.ws.send(JSON.stringify({
+      type: "round_end",
+      reason,
+      winnerId,
+      values: { [p1.id]: v1, [p2.id]: v2 },
+      health: { you: room.health[p.id], opponent: room.health[opp.id] },
+      damage,
+      round: room.round
+    }));
   });
 
   const dead = Object.entries(room.health).find(([_, hp]) => hp <= 0);
@@ -239,12 +245,18 @@ function handleRematch(player) {
     room.stood[p.id] = false;
   });
 
-  broadcast(room, {
-    type: "rematch_start",
-    round: room.round,
-    damage: Math.min(room.round, 7),
-    health: room.health,
-    currentTurnPlayerId: room.players[0].id
+  room.players.forEach(p => {
+    const opp = getOpponent(room, p);
+    p.ws.send(JSON.stringify({
+      type: "rematch_start",
+      yourHand: room.hands[p.id],
+      yourValue: handValue(room.hands[p.id]),
+      opponentCardCount: room.hands[opp.id].length,
+      health: { you: room.health[p.id], opponent: room.health[opp.id] },
+      round: room.round,
+      damage: Math.min(room.round, 7),
+      currentTurnPlayerId: room.players[0].id
+    }));
   });
 }
 
@@ -264,7 +276,7 @@ wss.on("connection", (ws) => {
     if (player.roomId !== null) {
       const room = rooms.get(player.roomId);
       if (room) {
-        const opp = room.players.find(p => p.id !== player.id);
+        const opp = getOpponent(room, player);
         if (opp?.ws.readyState === WebSocket.OPEN) {
           opp.ws.send(JSON.stringify({ type: "opponent_left" }));
         }
