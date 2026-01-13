@@ -257,4 +257,9 @@ function handleDisconnect(player) {
     }
   }
   broadcastRoomList();
+
 }
+
+server.listen(PORT, () => {
+  console.log("Blackjack (21) WebSocket Server running on port", PORT);
+});
