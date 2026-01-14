@@ -80,20 +80,20 @@ function handleCreateRoom(player, msg) {
 }
 
 function handleGetRooms(player) {
-  const availableRooms = [];
+  const roomList = [];
 
   for (const [roomId, room] of rooms.entries()) {
     availableRooms.push({ 
       id: roomId, 
-      playerCount: room.players.length, 
       state: room.state,
+      playerCount: room.players.length, 
       maxPlayers: 2
     });
   }
 
   player.ws.send(JSON.stringify({ 
     type: "room_list", 
-    rooms: availableRooms 
+    rooms: roomList 
   }));
 }
 
@@ -311,6 +311,7 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
 
 
 
