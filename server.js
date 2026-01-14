@@ -165,7 +165,7 @@ function startGame(room) {
 
 function handleHit(player) {
   const room = rooms.get(player.roomId);
-  if (!room || room.state !== "running") return;
+  
   if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   const card = room.deck.pop();
@@ -192,7 +192,6 @@ function handleHit(player) {
 
 function handleStand(player) {
   const room = rooms.get(player.roomId);
-  if (!room || room.state !== "running") return;
 
   room.stood[player.id] = true;
   broadcast(room, { type: "stand_result", playerId: player.id });
@@ -211,8 +210,8 @@ function handleStand(player) {
 /* ===================== ROUND END ===================== */
 
 function endRound(room, bustedId = null) {
-  // Temporarily block inputs
-  room.state = "finished";
+  if (room.processingRound) return;
+  room.processingRound = true;
 
   const [p1, p2] = room.players;
   const v1 = handValue(room.hands[p1.id]);
@@ -220,22 +219,16 @@ function endRound(room, bustedId = null) {
 
   // Determine winner
   let winnerId = null;
-  if (bustedId) {
-    winnerId = bustedId === p1.id ? p2.id : p1.id;
-  } else if (v1 !== v2) {
-    winnerId = v1 > v2 ? p1.id : p2.id;
-  } else {
-    winnerId = null; // tie
-  }
+  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
+  else if (v1 !== v2) winnerId = v1 > v2 ? p1.id : p2.id;
 
-  // Apply damage
   const damage = Math.min(room.round, 7);
   if (winnerId) {
     const loserId = winnerId === p1.id ? p2.id : p1.id;
     room.health[loserId] = Math.max(0, room.health[loserId] - damage);
   }
 
-  // Notify players of round result
+  // Broadcast round results
   room.players.forEach(p => {
     const opp = getOpponent(room, p);
     p.ws.send(JSON.stringify({
@@ -246,28 +239,31 @@ function endRound(room, bustedId = null) {
   });
 
   // Check for game over
-  const deadPlayer = room.players.find(p => room.health[p.id] === 0);
+  const deadPlayer = room.players.find(p => room.health[p.id] <= 0);
   if (deadPlayer) {
     const winner = getOpponent(room, deadPlayer);
-    room.state = "game_over";
     room.players.forEach(p => {
       p.ws.send(JSON.stringify({
         type: "game_over",
         winnerId: winner.id
       }));
     });
+    room.processingRound = false; // allow server to accept new games later
     return;
   }
 
   // Schedule next round
-  setTimeout(() => resetForNextRound(room), 1000);
+  setTimeout(() => {
+    resetForNextRound(room);
+    room.processingRound = false; // now the round is unlocked
+  }, 1000);
 }
 
 /* ===================== RESET FOR NEXT ROUND ===================== */
 
 function resetForNextRound(room) {
+  room.state = "running";
   room.round += 1;
-  room.state = "running"; // crucial for accepting hits/stands
   room.deck = createDeck();
   room.hands = {};
   room.stood = {};
