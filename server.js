@@ -210,56 +210,32 @@ function handleStand(player) {
 
 /* ===================== ROUND END ===================== */
 
-function resetForNextRound(room) {
-  room.state = "running";
-  room.round += 1;
-  room.deck = createDeck();
-  room.hands = {};
-  room.stood = {};
-  room.currentTurnIndex = 0;
-
-  room.players.forEach(p => {
-    room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
-    room.stood[p.id] = false;
-  });
-
-  room.players.forEach(p => {
-    const opp = getOpponent(room, p);
-    p.ws.send(JSON.stringify({
-      type: "round_end",
-      yourHand: room.hands[p.id],
-      yourValue: handValue(room.hands[p.id]),
-      opponentCardCount: room.hands[opp.id].length,
-      health: { you: room.health[p.id], opponent: room.health[opp.id] },
-      round: room.round,
-      damage: Math.min(room.round, 7),
-      currentTurnPlayerId: room.players[0].id
-    }));
-  });
-}
-
 function endRound(room, bustedId = null) {
+  // Temporarily block inputs
   room.state = "finished";
 
   const [p1, p2] = room.players;
   const v1 = handValue(room.hands[p1.id]);
   const v2 = handValue(room.hands[p2.id]);
 
+  // Determine winner
   let winnerId = null;
   if (bustedId) {
     winnerId = bustedId === p1.id ? p2.id : p1.id;
   } else if (v1 !== v2) {
     winnerId = v1 > v2 ? p1.id : p2.id;
   } else {
-    winnerId = null;
+    winnerId = null; // tie
   }
 
+  // Apply damage
   const damage = Math.min(room.round, 7);
   if (winnerId) {
     const loserId = winnerId === p1.id ? p2.id : p1.id;
     room.health[loserId] = Math.max(0, room.health[loserId] - damage);
   }
 
+  // Notify players of round result
   room.players.forEach(p => {
     const opp = getOpponent(room, p);
     p.ws.send(JSON.stringify({
@@ -269,7 +245,8 @@ function endRound(room, bustedId = null) {
     }));
   });
 
-  const deadPlayer = room.players.find(p => room.health[p.id] <= 0);
+  // Check for game over
+  const deadPlayer = room.players.find(p => room.health[p.id] === 0);
   if (deadPlayer) {
     const winner = getOpponent(room, deadPlayer);
     room.state = "game_over";
@@ -282,8 +259,42 @@ function endRound(room, bustedId = null) {
     return;
   }
 
+  // Schedule next round
   setTimeout(() => resetForNextRound(room), 1000);
 }
+
+/* ===================== RESET FOR NEXT ROUND ===================== */
+
+function resetForNextRound(room) {
+  room.round += 1;
+  room.state = "running"; // crucial for accepting hits/stands
+  room.deck = createDeck();
+  room.hands = {};
+  room.stood = {};
+  room.currentTurnIndex = 0;
+
+  // Deal new hands
+  room.players.forEach(p => {
+    room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
+    room.stood[p.id] = false;
+  });
+
+  // Notify players of new round
+  room.players.forEach(p => {
+    const opp = getOpponent(room, p);
+    p.ws.send(JSON.stringify({
+      type: "round_start",
+      round: room.round,
+      yourHand: room.hands[p.id],
+      yourValue: handValue(room.hands[p.id]),
+      opponentCardCount: room.hands[opp.id].length,
+      health: { you: room.health[p.id], opponent: room.health[opp.id] },
+      currentTurnPlayerId: room.players[room.currentTurnIndex].id
+    }));
+  });
+}
+
+/* ===================== REMATCH ===================== */
 
 function handleRematch(player) {
   const room = rooms.get(player.roomId);
