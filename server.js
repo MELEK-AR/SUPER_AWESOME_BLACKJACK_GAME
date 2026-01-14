@@ -264,6 +264,7 @@ function endRound(room, bustedId = null) {
 function resetForNextRound(room) {
   room.state = "running";
   room.round += 1;
+  room.damage += 1;
   room.deck = createDeck();
   room.hands = {};
   room.stood = {};
@@ -281,6 +282,7 @@ function resetForNextRound(room) {
     p.ws.send(JSON.stringify({
       type: "round_start",
       round: room.round,
+      damage: room.damage,
       yourHand: room.hands[p.id],
       yourValue: handValue(room.hands[p.id]),
       opponentCardCount: room.hands[opp.id].length,
