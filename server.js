@@ -178,16 +178,6 @@ function handleHit(player) {
     card,
     newValue: value
   });
-
-  if (value > 21) {
-    endRound(room, player.id);
-  } else {
-    room.currentTurnIndex = 1 - room.currentTurnIndex;
-    broadcast(room, {
-      type: "turn_change",
-      currentTurnPlayerId: room.players[room.currentTurnIndex].id
-    });
-  }
 }
 
 function handleStand(player) {
@@ -280,3 +270,4 @@ wss.on("connection", ws => {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
