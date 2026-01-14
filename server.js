@@ -166,30 +166,22 @@ function startGame(room) {
 function handleHit(player) {
   const room = rooms.get(player.roomId);
   
-  // Only allow current player to act
   if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   const card = room.deck.pop();
   room.hands[player.id].push(card);
   const value = handValue(room.hands[player.id]);
 
-  // Broadcast drawn card to both players
-  room.players.forEach(p => {
-    const isPlayer = p.id === player.id;
-    p.ws.send(JSON.stringify({
-      type: "hit_result",
-      playerId: player.id,
-      card,                  // actual card drawn
-      yourHand: room.hands[p.id], // updated hand for each player
-      yourValue: handValue(room.hands[p.id])
-    }));
+  broadcast(room, {
+    type: "hit_result",
+    playerId: player.id,
+    card,
+    newValue: value
   });
 
-  // Check for bust
   if (value > 21) {
     endRound(room, player.id);
   } else {
-    // Switch turn
     room.currentTurnIndex = 1 - room.currentTurnIndex;
     broadcast(room, {
       type: "turn_change",
@@ -218,8 +210,8 @@ function handleStand(player) {
 /* ===================== ROUND END ===================== */
 
 function endRound(room, bustedId = null) {
-  // Temporarily block inputs
-  room.state = "finished";
+  if (room.processingRound) return;
+  room.processingRound = true;
 
   const [p1, p2] = room.players;
   const v1 = handValue(room.hands[p1.id]);
@@ -227,20 +219,16 @@ function endRound(room, bustedId = null) {
 
   // Determine winner
   let winnerId = null;
-  if (bustedId) {
-    winnerId = bustedId === p1.id ? p2.id : p1.id;
-  } else if (v1 !== v2) {
-    winnerId = v1 > v2 ? p1.id : p2.id;
-  }
+  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
+  else if (v1 !== v2) winnerId = v1 > v2 ? p1.id : p2.id;
 
-  // Apply damage
   const damage = Math.min(room.round, 7);
   if (winnerId) {
     const loserId = winnerId === p1.id ? p2.id : p1.id;
     room.health[loserId] = Math.max(0, room.health[loserId] - damage);
   }
 
-  // Notify players of round result
+  // Broadcast round results
   room.players.forEach(p => {
     const opp = getOpponent(room, p);
     p.ws.send(JSON.stringify({
@@ -251,26 +239,24 @@ function endRound(room, bustedId = null) {
   });
 
   // Check for game over
-  const deadPlayer = room.players.find(p => room.health[p.id] === 0);
+  const deadPlayer = room.players.find(p => room.health[p.id] <= 0);
   if (deadPlayer) {
     const winner = getOpponent(room, deadPlayer);
-    room.state = "game_over";
-
-    // Notify clients of game over
     room.players.forEach(p => {
       p.ws.send(JSON.stringify({
         type: "game_over",
         winnerId: winner.id
       }));
     });
-
-    // Automatically reset for next game after 3 seconds
-    setTimeout(() => startRematch(room), 3000);
+    room.processingRound = false; // allow server to accept new games later
     return;
   }
 
-  // Schedule next round if no one died
-  setTimeout(() => resetForNextRound(room), 1000);
+  // Schedule next round
+  setTimeout(() => {
+    resetForNextRound(room);
+    room.processingRound = false; // now the round is unlocked
+  }, 1000);
 }
 
 /* ===================== RESET FOR NEXT ROUND ===================== */
