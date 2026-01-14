@@ -178,6 +178,16 @@ function handleHit(player) {
     card,
     newValue: value
   });
+
+  if (value > 21) {
+    endRound(room, player.id);
+  } else {
+    room.currentTurnIndex = 1 - room.currentTurnIndex;
+    broadcast(room, {
+      type: "turn_change",
+      currentTurnPlayerId: room.players[room.currentTurnIndex].id
+    });
+  }
 }
 
 function handleStand(player) {
@@ -199,6 +209,34 @@ function handleStand(player) {
 }
 
 /* ===================== ROUND END ===================== */
+
+function resetForNextRound(room) {
+  room.state = "running";
+  room.round += 1;
+  room.deck = createDeck();
+  room.hands = {};
+  room.stood = {};
+  room.currentTurnIndex = 0;
+
+  room.players.forEach(p => {
+    room.hands[p.id] = [room.deck.pop(), room.deck.pop()];
+    room.stood[p.id] = false;
+  });
+
+  room.players.forEach(p => {
+    const opp = getOpponent(room, p);
+    p.ws.send(JSON.stringify({
+      type: "round_end",
+      yourHand: room.hands[p.id],
+      yourValue: handValue(room.hands[p.id]),
+      opponentCardCount: room.hands[opp.id].length,
+      health: { you: room.health[p.id], opponent: room.health[opp.id] },
+      round: room.round,
+      damage: Math.min(room.round, 7),
+      currentTurnPlayerId: room.players[0].id
+    }));
+  });
+}
 
 function endRound(room, bustedId = null) {
   room.state = "finished";
@@ -225,6 +263,21 @@ function endRound(room, bustedId = null) {
       health: { you: room.health[p.id], opponent: room.health[opp.id] }
     }));
   });
+
+  const deadPlayer = room.players.find(p => room.health[p.id] <= 0);
+  if (deadPlayer) {
+    const winner = getOpponent(room, deadPlayer);
+    room.state = "game_over";
+    room.players.forEach(p => {
+      p.ws.send(JSON.stringify({
+        type: "game_over",
+        winnerId: winner.id
+      }));
+    });
+    return;
+  }
+
+  setTimeout(() => resetForNextRound(room), 1000);
 }
 
 /* ===================== CONNECTION ===================== */
@@ -270,4 +323,3 @@ wss.on("connection", ws => {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
-
