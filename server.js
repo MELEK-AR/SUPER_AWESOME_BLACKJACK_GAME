@@ -166,22 +166,30 @@ function startGame(room) {
 function handleHit(player) {
   const room = rooms.get(player.roomId);
   
+  // Only allow current player to act
   if (room.players[room.currentTurnIndex].id !== player.id) return;
 
   const card = room.deck.pop();
   room.hands[player.id].push(card);
   const value = handValue(room.hands[player.id]);
 
-  broadcast(room, {
-    type: "hit_result",
-    playerId: player.id,
-    card,
-    newValue: value
+  // Broadcast drawn card to both players
+  room.players.forEach(p => {
+    const isPlayer = p.id === player.id;
+    p.ws.send(JSON.stringify({
+      type: "hit_result",
+      playerId: player.id,
+      card,                  // actual card drawn
+      yourHand: room.hands[p.id], // updated hand for each player
+      yourValue: handValue(room.hands[p.id])
+    }));
   });
 
+  // Check for bust
   if (value > 21) {
     endRound(room, player.id);
   } else {
+    // Switch turn
     room.currentTurnIndex = 1 - room.currentTurnIndex;
     broadcast(room, {
       type: "turn_change",
