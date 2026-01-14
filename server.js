@@ -250,7 +250,8 @@ function endRound(room, bustedId = null) {
       }));
     });
 
-    rooms.delete(room.id);
+    room.state = "game_over";
+    room.rematchVotes.clear();
     broadcastRoomList();
     
     room.processingRound = false; // allow server to accept new games later
@@ -341,19 +342,25 @@ wss.on("connection", ws => {
   });
 
   ws.on("close", () => {
-    if (player.roomId !== null) {
-      const room = rooms.get(player.roomId);
-      if (room) rooms.delete(room.id);
-      broadcastRoomList();
+  if (player.roomId !== null) {
+    const room = rooms.get(player.roomId);
+    if (!room) return;
+
+    room.players = room.players.filter(p => p.id !== player.id);
+
+    if (room.players.length === 0) {
+      rooms.delete(room.id);
+    } else {
+      room.state = "waiting";
     }
-  });
 
-  ws.send(JSON.stringify({ type: "welcome", playerId: player.id }));
-  broadcastRoomList();
+    broadcastRoomList();
+  }
 });
-
+  
 /* ===================== START ===================== */
 
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
