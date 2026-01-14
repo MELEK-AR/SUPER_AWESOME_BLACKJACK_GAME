@@ -57,7 +57,7 @@ function broadcastRoomList() {
   const roomsPayload = Array.from(rooms.values()).map(r => ({
     roomId: r.id,
     players: r.players.map(p => p.name),
-    state: r.state,
+    state: r.state === "game_over" ? "waiting" : r.state,
     mode: "classic"
   }));
 
@@ -309,3 +309,4 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
+
