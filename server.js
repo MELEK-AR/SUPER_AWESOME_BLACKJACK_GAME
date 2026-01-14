@@ -210,8 +210,8 @@ function handleStand(player) {
 /* ===================== ROUND END ===================== */
 
 function endRound(room, bustedId = null) {
-  if (room.processingRound) return;
-  room.processingRound = true;
+  // Temporarily block inputs
+  room.state = "finished";
 
   const [p1, p2] = room.players;
   const v1 = handValue(room.hands[p1.id]);
@@ -219,16 +219,20 @@ function endRound(room, bustedId = null) {
 
   // Determine winner
   let winnerId = null;
-  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
-  else if (v1 !== v2) winnerId = v1 > v2 ? p1.id : p2.id;
+  if (bustedId) {
+    winnerId = bustedId === p1.id ? p2.id : p1.id;
+  } else if (v1 !== v2) {
+    winnerId = v1 > v2 ? p1.id : p2.id;
+  }
 
+  // Apply damage
   const damage = Math.min(room.round, 7);
   if (winnerId) {
     const loserId = winnerId === p1.id ? p2.id : p1.id;
     room.health[loserId] = Math.max(0, room.health[loserId] - damage);
   }
 
-  // Broadcast round results
+  // Notify players of round result
   room.players.forEach(p => {
     const opp = getOpponent(room, p);
     p.ws.send(JSON.stringify({
@@ -239,24 +243,26 @@ function endRound(room, bustedId = null) {
   });
 
   // Check for game over
-  const deadPlayer = room.players.find(p => room.health[p.id] <= 0);
+  const deadPlayer = room.players.find(p => room.health[p.id] === 0);
   if (deadPlayer) {
     const winner = getOpponent(room, deadPlayer);
+    room.state = "game_over";
+
+    // Notify clients of game over
     room.players.forEach(p => {
       p.ws.send(JSON.stringify({
         type: "game_over",
         winnerId: winner.id
       }));
     });
-    room.processingRound = false; // allow server to accept new games later
+
+    // Automatically reset for next game after 3 seconds
+    setTimeout(() => startRematch(room), 3000);
     return;
   }
 
-  // Schedule next round
-  setTimeout(() => {
-    resetForNextRound(room);
-    room.processingRound = false; // now the round is unlocked
-  }, 1000);
+  // Schedule next round if no one died
+  setTimeout(() => resetForNextRound(room), 1000);
 }
 
 /* ===================== RESET FOR NEXT ROUND ===================== */
