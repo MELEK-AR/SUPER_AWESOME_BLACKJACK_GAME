@@ -108,6 +108,28 @@ function joinRoom(player, msg) {
   if (room.players.length === 2) startGame(room);
 }
 
+function handleLeaveRoom(player) {
+  if (player.roomId === null) return;
+
+  const room = rooms.get(player.roomId);
+  if (!room) return;
+
+  room.players = room.players.filter(p => p.id !== player.id);
+  player.roomId = null;
+
+  if (room.players.length === 0) {
+    rooms.delete(room.id);
+  } else {
+    room.state = "waiting";
+
+    room.players[0].ws.send(JSON.stringify({
+      type: "opponent_left"
+    }));
+  }
+
+  broadcastRoomList();
+}
+
 /* ===================== GAME FLOW ===================== */
 
 function startGame(room) {
@@ -284,6 +306,7 @@ wss.on("connection", ws => {
     switch (msg.type) {
       case "create_room": createRoom(player, msg); break;
       case "join_room": joinRoom(player, msg); break;
+      case "leave_room": handleLeaveRoom(player); break;
       case "get_rooms": broadcastRoomList(); break;
       case "hit": handleHit(player); break;
       case "stand": handleStand(player); break;
@@ -309,4 +332,5 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
+
 
