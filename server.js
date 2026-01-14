@@ -83,17 +83,17 @@ function handleGetRooms(player) {
   const roomList = [];
 
   for (const [roomId, room] of rooms.entries()) {
-    availableRooms.push({ 
-      id: roomId, 
+    roomList.push({
+      roomId: roomId,
+      players: room.players.map(p => p.name),
       state: room.state,
-      playerCount: room.players.length, 
-      maxPlayers: 2
+      mode: "classic"
     });
   }
 
-  player.ws.send(JSON.stringify({ 
-    type: "room_list", 
-    rooms: roomList 
+  player.ws.send(JSON.stringify({
+    type: "room_list",
+    rooms: roomList
   }));
 }
 
@@ -311,6 +311,7 @@ function handleMessage(player, msg) {
 server.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
+
 
 
 
