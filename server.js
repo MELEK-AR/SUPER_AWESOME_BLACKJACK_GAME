@@ -246,8 +246,13 @@ function endRound(room, bustedId = null) {
   const v2 = handValue(room.hands[p2.id]);
 
   let winnerId = null;
-  if (bustedId) winnerId = bustedId === p1.id ? p2.id : p1.id;
-  else if (v1 !== v2) winnerId = v1 > v2 ? p1.id : p2.id;
+  if (bustedId) {
+    winnerId = bustedId === p1.id ? p2.id : p1.id;
+  } else if (v1 !== v2) {
+    winnerId = v1 > v2 ? p1.id : p2.id;
+  } else {
+    winnerId = null;
+  }
 
   const damage = Math.min(room.round, 7);
   if (winnerId) {
