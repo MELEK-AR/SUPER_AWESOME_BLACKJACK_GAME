@@ -165,8 +165,9 @@ function startGame(room) {
 
 function handleHit(player) {
   const room = rooms.get(player.roomId);
+  const handVal = handValue(room.hands[player.id]);
   
-  if (room.players[room.currentTurnIndex].id !== player.id) return;
+  if (room.players[room.currentTurnIndex].id !== player.id || handVal > 21) return;
 
   const card = room.deck.pop();
   room.hands[player.id].push(card);
@@ -248,6 +249,10 @@ function endRound(room, bustedId = null) {
         winnerId: winner.id
       }));
     });
+
+    rooms.delete(room.id);
+    broadcastRoomList();
+    
     room.processingRound = false; // allow server to accept new games later
     return;
   }
