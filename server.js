@@ -280,6 +280,21 @@ function endRound(room, bustedId = null) {
   setTimeout(() => resetForNextRound(room), 1000);
 }
 
+function handleRematch(player) {
+  const room = rooms.get(player.roomId);
+  if (!room || room.players.length < 2) return;
+
+  room.rematchVotes.add(player.id);
+
+  if (room.rematchVotes.size === room.players.length) {
+    room.round = 1;
+    room.health = {};
+    room.players.forEach(p => room.health[p.id] = 7);
+
+    startGame(room);
+  }
+}
+
 /* ===================== CONNECTION ===================== */
 
 wss.on("connection", ws => {
@@ -298,6 +313,7 @@ wss.on("connection", ws => {
         case "create_room": handleCreateRoom(player, msg); break;
         case "get_rooms": handleGetRooms(player); break;
         case "join_room": handleJoinRoom(player, msg); break;
+        case "rematch": handleRematch(player); break;
         case "hit": handleHit(player); break;
         case "stand": handleStand(player); break;
       }
