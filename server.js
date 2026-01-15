@@ -169,6 +169,7 @@ function startGame(room) {
 function handleHit(player) {
   const room = rooms.get(player.roomId);
   if (!room || room.currentTurnPlayerId !== player.id) return;
+  if (!player.isReady) return;
 
   const card = room.deck.pop();
   room.hands[player.id].push(card);
@@ -194,6 +195,7 @@ function handleHit(player) {
 function handleStand(player) {
   const room = rooms.get(player.roomId);
   if (!room) return;
+  if (!player.isReady) return;
 
   room.stood[player.id] = true;
   broadcast(room, { type: "stand_result", playerId: player.id });
@@ -291,10 +293,28 @@ function handleRematch(player) {
   }
 }
 
+function handlePlayerReady(player) {
+  const room = rooms.get(player.roomId);
+  if (!room) return;
+
+  player.isReady = true;
+
+  if (room.players.every(p => p.isReady)) {
+    if (!room.currentTurnPlayerId) {
+      room.currentTurnPlayerId = randomPlayerId(room);
+    }
+
+    broadcast(room, {
+      type: "turn_change",
+      currentTurnPlayerId: room.currentTurnPlayerId
+    });
+  }
+}
+
 /* ===================== CONNECTION ===================== */
 
 wss.on("connection", ws => {
-  const player = { id: nextPlayerId++, ws, roomId: null, name: null };
+  const player = { id: nextPlayerId++, ws, roomId: null, name: null, isReady: true };
 
   ws.send(JSON.stringify({ type: "welcome", playerId: player.id }));
   broadcastRoomList();
@@ -311,6 +331,7 @@ wss.on("connection", ws => {
       case "hit": handleHit(player); break;
       case "stand": handleStand(player); break;
       case "rematch": handleRematch(player); break;
+      case "player_ready": handlePlayerReady(player); break;
     }
   });
 
@@ -332,5 +353,3 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
-
-
