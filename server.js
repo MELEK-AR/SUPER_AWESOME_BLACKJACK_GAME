@@ -157,6 +157,7 @@ function startGame(room) {
       yourValue: handValue(room.hands[p.id]),
       opponentCardHand: room.hands[opp.id],
       opponentCardValue: handValue(opp.hands[p.id]),
+      opponentCardCount: room.hands[opp.id].length,
       health: { you: room.health[p.id], opponent: room.health[opp.id] },
       round: room.round,
       damage: 1,
@@ -275,6 +276,7 @@ function resetForNextRound(room) {
       yourValue: handValue(room.hands[p.id]),
       opponentHand: room.hands[opp.id],
       opponentValue: handValue(room.hands[opp.id]),
+      opponentCardCount: room.hands[opp.id].length,
       health: { you: room.health[p.id], opponent: room.health[opp.id] },
       currentTurnPlayerId: room.currentTurnPlayerId
     }));
@@ -334,6 +336,3 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
-
-
-
