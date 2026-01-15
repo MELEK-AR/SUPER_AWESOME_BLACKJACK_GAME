@@ -212,7 +212,11 @@ function handleStand(player) {
 
 /* ===================== ROUND END ===================== */
 
-function endRound(room, bustedId = null) {
+function distanceFrom21(value) {
+  return Math.abs(21 - value);
+}
+
+function endRound(room) {
   if (room.processingRound) return;
   room.processingRound = true;
 
@@ -221,8 +225,9 @@ function endRound(room, bustedId = null) {
   const vb = handValue(room.hands[b.id]);
 
   let winnerId = null;
-  if (bustedId) winnerId = bustedId === a.id ? b.id : a.id;
-  else if (va !== vb) winnerId = va > vb ? a.id : b.id;
+  if (distanceFrom21(va) !== distanceFrom21(vb)) {
+    winnerId = distanceFrom21(va) < distanceFrom21(vb) ? a.id : b.id;
+  }
 
   const damage = Math.min(room.round, 7);
   if (winnerId) {
