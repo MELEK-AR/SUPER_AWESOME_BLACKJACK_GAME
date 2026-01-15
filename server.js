@@ -179,8 +179,6 @@ function handleHit(player) {
     type: "hit_result",
     playerId: player.id,
     card,
-    yourHand: room.hands[player.id],
-    opponentHand: room.hands[getOpponent(room, player.id).id],
     newValue: value
   });
 
@@ -336,5 +334,6 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
+
 
 
