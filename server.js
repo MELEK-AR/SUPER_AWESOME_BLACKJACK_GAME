@@ -212,10 +212,6 @@ function handleStand(player) {
 
 /* ===================== ROUND END ===================== */
 
-function distanceFrom21(value) {
-  return Math.abs(21 - value);
-}
-
 function endRound(room) {
   if (room.processingRound) return;
   room.processingRound = true;
@@ -225,9 +221,21 @@ function endRound(room) {
   const vb = handValue(room.hands[b.id]);
 
   let winnerId = null;
-  if (distanceFrom21(va) !== distanceFrom21(vb)) {
-    winnerId = distanceFrom21(va) < distanceFrom21(vb) ? a.id : b.id;
+
+  const aValid = va <= 21;
+  const bValid = vb <= 21;
+
+  if (aValid && bValid) {
+    // both valid → pick closest to 21
+    if (va !== vb) winnerId = va > vb ? a.id : b.id;
+  } else if (aValid) {
+    // only a is valid
+    winnerId = a.id;
+  } else if (bValid) {
+    // only b is valid
+    winnerId = b.id;
   }
+  // else both busted → tie, winnerId stays null
 
   const damage = Math.min(room.round, 7);
   if (winnerId) {
@@ -235,6 +243,7 @@ function endRound(room) {
     room.health[loser] = Math.max(0, room.health[loser] - damage);
   }
 
+  // send round results
   room.players.forEach(p => {
     const opp = getOpponent(room, p.id);
     p.ws.send(JSON.stringify({
@@ -244,6 +253,7 @@ function endRound(room) {
     }));
   });
 
+  // check game over
   const dead = room.players.find(p => room.health[p.id] <= 0);
   if (dead) {
     const winner = getOpponent(room, dead.id);
@@ -340,3 +350,4 @@ wss.on("connection", ws => {
 server.listen(PORT, () =>
   console.log("Server running on port", PORT)
 );
+
