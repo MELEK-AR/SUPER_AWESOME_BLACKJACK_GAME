@@ -30,8 +30,7 @@ function createDeck() {
 }
 
 function handValue(hand) {
-  const sum = hand.reduce((a, c) => a + Number(c), 0);
-  return sum > 21 ? 0 : sum;
+  return hand.reduce((a, c) => a + Number(c), 0);
 }
 
 /* ===================== HELPERS ===================== */
@@ -172,6 +171,8 @@ function handleHit(player) {
   const room = rooms.get(player.roomId);
   if (!room || room.currentTurnPlayerId !== player.id) return;
 
+  if (handValue(room.hands[player.id]) > 21) return;
+
   const card = room.deck.pop();
   room.hands[player.id].push(card);
   const value = handValue(room.hands[player.id]);
@@ -183,14 +184,12 @@ function handleHit(player) {
     newValue: value
   });
 
-  if (value === 0) endRound(room, player.id);
-  else {
-    room.currentTurnPlayerId = getOpponent(room, player.id).id;
-    broadcast(room, {
-      type: "turn_change",
-      currentTurnPlayerId: room.currentTurnPlayerId
-    });
-  }
+  // normal turn change
+  room.currentTurnPlayerId = getOpponent(room, player.id).id;
+  broadcast(room, {
+    type: "turn_change",
+    currentTurnPlayerId: room.currentTurnPlayerId
+  });
 }
 
 function handleStand(player) {
