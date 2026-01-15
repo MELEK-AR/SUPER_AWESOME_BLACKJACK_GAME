@@ -156,7 +156,7 @@ function startGame(room) {
       yourHand: room.hands[p.id],
       yourValue: handValue(room.hands[p.id]),
       opponentCardHand: room.hands[opp.id],
-      opponentCardValue: handValue(opp.hands[p.id]),
+      opponentCardValue: handValue(room.hands[opp.id]),
       opponentCardCount: room.hands[opp.id].length,
       health: { you: room.health[p.id], opponent: room.health[opp.id] },
       round: room.round,
